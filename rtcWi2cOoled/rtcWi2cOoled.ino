@@ -1,15 +1,22 @@
 
 // Date and time functions using a DS1307 RTC connected via I2C and Wire lib
-#include <Wire.h>
-#include "RTClib.h"
-
-#include <SPI.h>
-#include <Wire.h>
-#include <Adafruit_GFX.h>
-#include <Adafruit_SSD1306.h>
-
 #include <avr/io.h>  //standard AVR header
 #include <stdio.h>
+#include <Wire.h>
+
+
+#include <SPI.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+#include "RTClib.h"
+
+
+#include <avr/interrupt.h>
+
+volatile int pr_seconds = 0 ;
+int seconds, minutes, hours, timerStep;
+void T1Delay ();
+
 
 RTC_DS1307 rtc;
 
@@ -65,6 +72,10 @@ unsigned int data;
 void setup () {
   while (!Serial); // for Leonardo/Micro/Zero
   Serial.begin(115200);
+  seconds = 0;
+  minutes = 0;
+  hours = 0;
+
   if (! rtc.begin()) {
     Serial.println("Couldn't find RTC");
     while (1);
@@ -79,6 +90,11 @@ void setup () {
   }
   Serial.print("The time is : ");
   DateTime now = rtc.now();
+
+  seconds = now.second();
+  minutes = now.minute();
+  hours = now.hour();
+
   snprintf(Time, 9, "%02d:%02d:%02d", now.hour(), now.minute(), now.second());
   Serial.println(Time);
 
@@ -130,59 +146,141 @@ void setup () {
   //    displayTemp(data, Time);
   //displayTime(DateTime.now);
   //}
+
+  cli(); // disable global interrupts
+
+  TCCR2A = 0b00000000;//0; // set entire TCCR1A register to 0
+  TCCR2B = 0b00000011; // same for
+  // enable timer compare interrupt:
+  TIMSK2 = 0b00000001;// |= (1 << OCIE0A);
+  sei(); // enable global interrupts
+
 }
 
-
-void loop() {
+ISR(TIMER2_OVF_vect)
+{
   DateTime now = rtc.now();
-  Serial.print(now.year(), DEC);
-  Serial.print('/');
-  Serial.print(now.month(), DEC);
-  Serial.print('/');
-  Serial.print(now.day(), DEC);
-  Serial.print(" (");
-  Serial.print(daysOfTheWeek[now.dayOfTheWeek()]);
-  Serial.print(") ");
-  Serial.print(now.hour(), DEC);
-  Serial.print(':');
-  Serial.print(now.minute(), DEC);
-  Serial.print(':');
-  Serial.print(now.second(), DEC);
-  Serial.println();
-  Serial.print(" since midnight 1/1/1970 = ");
-  Serial.print(now.unixtime());
-  Serial.print("s = ");
-  Serial.print(now.unixtime() / 86400L);
-  Serial.println("d");
-  Serial.println();
-  Serial.println();
+  timerStep++;
+  if (timerStep == 980)
+  {
+    timerStep = 0;
+    seconds++;
+    pr_seconds = 1;
+    //PORTB ^= 0x20;
+    Serial.println(" second ");
+    Serial.println(minutes);
+  }
 
-  hour   = now.hour();
-  minute = now.minute();
-  second = now.second();
+  //PORTB ^= 0x20;    // toggle PORTB.5
+  //seconds = seconds + 1;
+  //if (seconds == 3000)
+  if (seconds == 60)
+  {
+    minutes = minutes + 1;
+    seconds = 0;
+  }
+  if (minutes == 60)
+  {
+    hours = hours + 1;
+    minutes = 0;
+  }
+  Serial.print("time now: ");
+  Serial.print(hours);
+  Serial.print(":");
+  Serial.print(minutes);
+  Serial.print(":");
+  Serial.println(seconds);
+  pr_seconds = 0 ;
+  snprintf(Time, 9, "%02d:%02d:%02d", hours, minutes, seconds);
+  if (pr_seconds) {
+    // cli();
+    // PORTB ^= 0x20;
 
-  Serial.print(hour, DEC);
-  Serial.print(':');
-  Serial.print(minute, DEC);
-  Serial.print(':');
-  Serial.print(second, DEC);
 
-  snprintf(Time, 9, "%02d:%02d:%02d", hour, minute, second);
-
+  }
 
   ADCSRA |= (1 << ADSC) ;          // start conversion
   while ( (ADCSRA & (1 << ADIF)) == 0 ); // wait for end
   //PORTB = ADCH;          // give the high byte to PortB
   data  = ADCH / 3; //The 10-bit output of the A/D is divided by 4 to get the real temperature.
-
-
-  Serial.println("The result is : ");
-  Serial.println(data);
-
   displayTemp(data, Time);
+  //  Serial.println(" seconds: ");
+  //  Serial.println(seconds);
+  //  Serial.println(" Minutes: ");
+  //  Serial.println(minutes);
+  //  Serial.println(" Hours: ");
+  //  Serial.println(hours);
+  //TIFR0 &= ~(1<<OCF0A);
 
 }
 
+void loop() {
+
+  //  DateTime now = rtc.now();
+  //  Serial.print(now.year(), DEC);
+  //  Serial.print('/');
+  //  Serial.print(now.month(), DEC);
+  //  Serial.print('/');
+  //  Serial.print(now.day(), DEC);
+  //  Serial.print(" (");
+  //  Serial.print(daysOfTheWeek[now.dayOfTheWeek()]);
+  //  Serial.print(") ");
+  //  Serial.print(now.hour(), DEC);
+  //  Serial.print(':');
+  //  Serial.print(now.minute(), DEC);
+  //  Serial.print(':');
+  //  Serial.print(now.second(), DEC);
+  //  Serial.println();
+  //  Serial.print(" since midnight 1/1/1970 = ");
+  //  Serial.print(now.unixtime());
+  //  Serial.print("s = ");
+  //  Serial.print(now.unixtime() / 86400L);
+  //  Serial.println("d");
+  //  Serial.println();
+  //  Serial.println();
+  //
+  //  hour   = now.hour();
+  //  minute = now.minute();
+  //  second = now.second();
+  //
+  //  seconds = now.second();
+  //  minutes = now.minute();
+  //  hours = now.hour();
+  //
+  //  //  Serial.print(hour, DEC);
+  //  //  Serial.print(':');
+  //  //  Serial.print(minute, DEC);
+  //  //  Serial.print(':');
+  //  //  Serial.print(second, DEC);
+  //
+  //  Serial.print(hours, DEC);
+  //  Serial.print(':');
+  //  Serial.print(minutes, DEC);
+  //  Serial.print(':');
+  //  Serial.print(seconds, DEC);
+  //
+  //  snprintf(Time, 9, "%02d:%02d:%02d", hours, minutes, seconds);
+  //
+
+
+  //  Serial.println("The result is : ");
+  //  Serial.println(data);
+
+
+  //  if (pr_seconds) {
+  //    // cli();
+  //    // PORTB ^= 0x20;
+  //    Serial.print("time now: ");
+  //    Serial.print(hours);
+  //    Serial.print(":");
+  //    Serial.print(minutes);
+  //    Serial.print(":");
+  //    Serial.println(seconds);
+  //    pr_seconds = 0 ;
+  //  }
+
+
+}
 
 void displayTemp(int temprature, char *text) {
   char str[12];
